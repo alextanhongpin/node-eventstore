@@ -4,6 +4,7 @@ export class Aggregate {
     this.#name = this.constructor.name;
     this.id = id;
     this.events = [];
+    // NOTE: The first event should produce version 0, not 1.
     this.version = BigInt(-1);
     this.when = {};
   }
@@ -28,7 +29,7 @@ export class Aggregate {
     this.events.push(event);
   }
 
-  toStream() {
+  toStreamId() {
     return `${this.#name}_${this.id}`;
   }
 }

@@ -23,16 +23,17 @@ async function main() {
   wallet.rename("Home Expenses");
 
   // Save events to event store.
-  await appendEvents(client, wallet);
+  const isNew = true;
+  await appendToStream(client, wallet, isNew);
 
   // Rehydrate aggregate from event store events.
-  const events = await loadEvents(client, wallet);
+  const events = await readStream(client, wallet);
   const wallet2 = WalletAggregate.fromEvents(wallet.id, events);
   wallet2.addExpense("dinner", 20);
   wallet2.rename("Housing");
-  await appendEvents(client, wallet2);
+  await appendToStream(client, wallet2);
 
-  const events2 = await loadEvents(client, wallet2);
+  const events2 = await readStream(client, wallet2);
   console.log({ events2 });
   const wallet3 = WalletAggregate.fromEvents(wallet2.id, events2);
   console.log(wallet3);
@@ -42,30 +43,27 @@ async function main() {
 
 main().catch(console.error);
 
-async function appendEvents(client, aggregate) {
-  for await (const event of aggregate.events) {
-    console.log({ event, version: event.version });
-    // The revision starts from 0 for event store, and the expected revision is
-    // the previous revision.
-    const revision =
-      event.type === WalletCreatedEvent.name
-        ? NO_STREAM
-        : event.version - BigInt(1);
-    const evt = jsonEvent({
+async function appendToStream(client, aggregate, isNew = false) {
+  if (aggregate.events.length === 0) return false;
+
+  const revision = isNew ? NO_STREAM : aggregate.events[0].version - BigInt(1);
+  const events = aggregate.events.map((event) =>
+    jsonEvent({
       type: event.type,
       data: event.data,
-    });
-    const result = await client.appendToStream(aggregate.toStream(), evt, {
-      revision,
-    });
-    if (!result.success) {
-      throw new Error("failed to append events");
-    }
-    console.log("appended", result);
+    })
+  );
+  const result = await client.appendToStream(aggregate.toStreamId(), events, {
+    revision,
+  });
+  if (!result.success) {
+    throw new Error("failed to append events");
   }
+
+  console.log("appended", result);
 }
 
-async function loadEvents(client, aggregate) {
+async function readStream(client, aggregate) {
   const EVENT_MAP = {
     [ExpenseAddedEvent.name]: ({ id, version, data }) =>
       new ExpenseAddedEvent(data, { id, version }),
@@ -75,7 +73,7 @@ async function loadEvents(client, aggregate) {
       new WalletRenamedEvent(data, { id, version }),
   };
 
-  const $events = await client.readStream(aggregate.toStream(), {
+  const $events = await client.readStream(aggregate.toStreamId(), {
     direction: FORWARDS,
     fromRevision: START,
     maxCount: 10,
