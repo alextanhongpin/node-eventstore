@@ -65,3 +65,10 @@ Sample events from projection:
   ]
 }
 ```
+
+## Architecture for EventSourcing
+
+- stateless: the next command does not need to depend on the previous one (append only)
+- stateful: the next command depends on the result from the previous state
+
+In general, stateless design is much simpler (see v2 directory). We can just produce the events without needing to know about the previous state.
