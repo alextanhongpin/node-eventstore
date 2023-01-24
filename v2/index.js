@@ -2,7 +2,6 @@ import { events, createWallet, renameWallet, addExpense } from "./command.js";
 
 import {
   EventStoreDBClient,
-  jsonEvent,
   streamNameFilter,
   NO_STREAM,
   FORWARDS,
@@ -19,17 +18,14 @@ async function main() {
   const walletId = generateId();
   const streamId = `wallet_${walletId}`;
   const walletCreatedEvent = createWallet(walletId, "Housing");
-  const walletRenamedEvent = renameWallet(
-    walletId,
-    walletCreatedEvent.aggregateVersion,
-    "Home Expenses"
-  );
+  const walletRenamedEvent = renameWallet(walletId, "Home Expenses");
 
   {
     const result = await client.appendToStream(
       streamId,
-      [walletCreatedEvent, walletRenamedEvent].map(jsonEvent),
+      [walletCreatedEvent, walletRenamedEvent],
       {
+        // The first event starts with revision 0.
         revision: NO_STREAM,
       }
     );
@@ -39,30 +35,14 @@ async function main() {
     console.log("events appended to stream", streamId);
   }
 
-  const $events = await client.readStream(streamId, {
-    direction: BACKWARDS,
-    fromRevision: END,
-    maxCount: 1,
-  });
-  const events = [];
-  for await (const event of $events) {
-    events.push(event);
-  }
-
-  const lastEvent = events[0];
-  console.log(lastEvent);
-  const lastRevision = lastEvent.event.revision;
-  const firstExpense = addExpense(walletId, lastRevision, "Lunch", 15);
-  const secondExpense = addExpense(
-    walletId,
-    firstExpense.aggregateVersion,
-    "Dinner",
-    10
-  );
+  // The last revision is needed for optimistic concurrency control.
+  const lastRevision = await getLastRevision(client, streamId);
+  const firstExpense = addExpense(walletId, "Lunch", 15);
+  const secondExpense = addExpense(walletId, "Dinner", 10);
   {
     const result = await client.appendToStream(
       streamId,
-      [firstExpense, secondExpense].map(jsonEvent),
+      [firstExpense, secondExpense],
       {
         revision: lastRevision,
       }
@@ -73,9 +53,10 @@ async function main() {
     console.log("events appended to stream", streamId);
   }
 
+  // This projection creates a summary of the number of expenses, and the total
+  // amount.
   const projectionName = `wallet_${walletId}_expenses_count`;
-  const projection = `
-fromStream('${streamId}')
+  const projection = `fromStream('${streamId}')
 .when({
   $init() {
     return {
@@ -88,17 +69,35 @@ fromStream('${streamId}')
     s.total += e.data.amount;
   }
 })
-.outputState()
-`;
+.transformBy((state) => state.total)
+.outputState()`;
   await client.createProjection(projectionName, projection);
+
   // Give it some time to count event.
   await delay(500);
 
+  // This returns the `state` object.
   const state = await client.getProjectionState(projectionName);
+
+  // This returns the `transformBy` result.
   const result = await client.getProjectionResult(projectionName);
   console.log({ state, result });
 
   await await client.dispose();
+}
+
+async function getLastRevision(client, streamId) {
+  const $events = await client.readStream(streamId, {
+    direction: BACKWARDS,
+    fromRevision: END,
+    maxCount: 1,
+  });
+
+  const events = [];
+  for await (const { event } of $events) {
+    events.push(event);
+  }
+  return events[0].revision;
 }
 
 function generateId() {

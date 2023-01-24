@@ -1,4 +1,4 @@
-import { createEvent } from "./event.js";
+import { jsonEvent } from "@eventstore/db-client";
 
 export const events = {
   WALLET_CREATED: "WalletCreated",
@@ -6,39 +6,33 @@ export const events = {
   EXPENSE_ADDED: "ExpenseAdded",
 };
 
-export function createWallet(id, name) {
-  return createEvent({
+export function createWallet(walletId, name) {
+  return jsonEvent({
     type: events.WALLET_CREATED,
     data: {
+      walletId,
       name,
     },
-    aggregateId: id,
-    aggregateType: "Wallet",
-    aggregateVersion: BigInt(0),
   });
 }
 
-export function renameWallet(id, version, name) {
-  return createEvent({
+export function renameWallet(walletId, name) {
+  return jsonEvent({
     type: events.WALLET_RENAMED,
     data: {
+      walletId,
       name,
     },
-    aggregateId: id,
-    aggregateType: "Wallet",
-    aggregateVersion: version + BigInt(1),
   });
 }
 
-export function addExpense(id, version, name, amount) {
-  return createEvent({
+export function addExpense(walletId, name, amount) {
+  return jsonEvent({
     type: events.EXPENSE_ADDED,
     data: {
+      walletId,
       name,
       amount,
     },
-    aggregateId: id,
-    aggregateType: "Wallet",
-    aggregateVersion: version + BigInt(1),
   });
 }
