@@ -16,17 +16,6 @@ const movieId = "homealone";
 const seatId = "seat1";
 
 const reservationId = `res_${movieId}_${seatId}`;
-const event = jsonEvent({
-  //id: unique-id
-  //metadata: {}
-  type: "SeatReserved",
-  data: {
-    reservationId,
-    movieId,
-    userId,
-    seatId,
-  },
-});
 
 // Subscribing to Streams.
 client
@@ -44,10 +33,23 @@ subscription.on("data", function (resolvedEvent) {
 });
 
 // Appending to Stream.
+const event = jsonEvent({
+  //id: unique-id
+  //metadata: {}
+  type: "SeatReserved",
+  data: {
+    reservationId,
+    movieId,
+    userId,
+    seatId,
+  },
+});
+
 const result = await client.appendToStream(reservationId, event, {
   revision: NO_STREAM,
 });
 console.log({ result });
+
 const resolvedEvent = await client.readStream(reservationId);
 console.log({ resolvedEvent, revision: resolvedEvent.revision });
 
